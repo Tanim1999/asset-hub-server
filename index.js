@@ -26,13 +26,15 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     const userCollection = client.db("Dream-Asset-Hub").collection("users");
+    const assetCollection = client.db("Dream-Asset-Hub").collection("assets");
+    const requestCollection = client.db("Dream-Asset-Hub").collection("requests");
+    
 
 
     // Users related API
     app.post('/users', async (req, res) => {
         const user = req.body;
-        // insert email if user doesnt exists: 
-        // you can do this many ways (1. email unique, 2. upsert 3. simple checking)
+        
         const query = { email: user.email }
         const existingUser = await userCollection.findOne(query);
         if (existingUser) {
@@ -41,6 +43,89 @@ async function run() {
         const result = await userCollection.insertOne(user);
         res.send(result);
       });
+
+      app.get('/users',async(req,res)=>{
+        const result =  await userCollection.find().toArray();
+        res.send(result);
+      })
+      
+      app.get('/users/:email', async (req, res) => {
+        const email = req.params.email;
+        const query = { email: email };
+        const user = await userCollection.findOne(query);
+        res.send(user)
+        
+      })
+
+      app.patch('/users/:email',async(req,res)=>{
+        const email = req.params.email;
+        const filter = { email: email };
+        
+        const options = {upsert: true};
+        const updatedUser = req.body ;
+        const user = {
+            $set : {
+                
+                name :updatedUser.name ,
+                birthDay :updatedUser.birthDay ,
+                 
+                
+            }
+        }
+
+        const result = await userCollection.updateOne(filter,user,options)
+        res.send(result)
+    })
+
+      app.get('/users/admin/:email',  async (req, res) => {
+        const email = req.params.email;
+        const query = { email: email };
+        const user = await userCollection.findOne(query);
+        let admin = false;
+        if (user) {
+          admin = user?.role === 'admin';
+        }
+        res.send({ admin });
+      })
+
+
+    //   asseet related api
+
+    app.post('/assets', async (req, res) => {
+        const item = req.body;
+        const result = await assetCollection.insertOne(item);
+        res.send(result);
+      });
+
+      app.get('/assets', async (req, res) => {
+        const result = await assetCollection.find().toArray();
+        res.send(result);
+      });
+
+    //   request related api
+    app.get('/requests', async (req, res) => {
+        const result = await requestCollection.find().toArray();
+        res.send(result);
+      });
+  
+      app.get('/requests/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) }
+        const result = await requestCollection.findOne(query);
+        res.send(result);
+      })
+
+
+    app.post('/requests', async (req, res) => {
+        const item = req.body;
+        const result = await requestCollection.insertOne(item);
+        res.send(result);
+      });
+    
+    
+
+    
+
   
 
 
