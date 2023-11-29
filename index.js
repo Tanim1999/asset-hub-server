@@ -100,6 +100,7 @@ async function run() {
                     birthDay: updatedUser.birthDay,
                     companyName:updatedUser.companyName,
                     role:updatedUser.role,
+                    photoURL:updatedUser.photoURL
 
 
                 }
@@ -132,7 +133,24 @@ async function run() {
         });
 
         app.get('/assets', async (req, res) => {
-            const result = await assetCollection.find().toArray();
+            const productNAme = req.query.productNAme;
+                const productType = req.query.productType;
+                const availability = req.query.availability
+
+                //query
+                const query = {};
+
+                if (productNAme) {
+                    query.productNAme = productNAme;
+                }
+
+                if (productType) {
+                    query.productType = productType;
+                }
+                if (availability) {
+                    query.availability = availability;
+                }
+            const result = await assetCollection.find(query).toArray();
             res.send(result);
         });
 
