@@ -1,15 +1,21 @@
 const express = require('express');
 const app = express();
 const cors = require('cors');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 require('dotenv').config()
 const port = process.env.PORT || 5000;
 
 // middleware
-app.use(cors());
+app.use(
+    cors()
+    // origin: ['http://localhost:5174/','https://656882dffe8d9529935ee5c4--spectacular-baklava-de8204.netlify.app/'],
+    // credentials: true,`
+
+);
 app.use(express.json());
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.pxdxtq4.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -28,6 +34,7 @@ async function run() {
         const userCollection = client.db("Dream-Asset-Hub").collection("users");
         const assetCollection = client.db("Dream-Asset-Hub").collection("assets");
         const requestCollection = client.db("Dream-Asset-Hub").collection("requests");
+        const paymentCollection = client.db("Dream-Asset-Hub").collection("payments");
 
 
 
@@ -81,7 +88,7 @@ async function run() {
 
         })
 
-        
+
 
 
 
@@ -98,9 +105,11 @@ async function run() {
 
                     name: updatedUser.name,
                     birthDay: updatedUser.birthDay,
-                    companyName:updatedUser.companyName,
-                    role:updatedUser.role,
-                    photoURL:updatedUser.photoURL
+                    companyName: updatedUser.companyName,
+                    role: updatedUser.role,
+                    photoURL: updatedUser.photoURL,
+                    package: updatedUser.package,
+                    companyLogo: updatedUser.companyLogo
 
 
                 }
@@ -110,7 +119,7 @@ async function run() {
             res.send(result)
         })
 
-        
+
 
         app.get('/users/admin/:email', async (req, res) => {
             const email = req.params.email;
@@ -132,47 +141,262 @@ async function run() {
             res.send(result);
         });
 
+
+
+
         app.get('/assets', async (req, res) => {
-            const productNAme = req.query.productNAme;
-                const productType = req.query.productType;
+            try {
+                const filter = req.query;
+                const productType = req.query.productType
                 const availability = req.query.availability
+                const companyName = req.query.companyName
 
-                //query
-                const query = {};
+                const query = {}
 
-                if (productNAme) {
-                    query.productNAme = productNAme;
+                if (req.query.search) {
+                    query.productNAme = { "$regex": filter.search, "$options": "i" }
                 }
-
                 if (productType) {
                     query.productType = productType;
                 }
                 if (availability) {
-                    query.availability = availability;
+                    query.availability = availability
                 }
-            const result = await assetCollection.find(query).toArray();
-            res.send(result);
+
+                if (companyName) {
+                    query.companyName = companyName
+                }
+
+                const cursor = assetCollection.find(query);
+                const result = await cursor.toArray();
+                res.send(result);
+            } catch (error) {
+                console.error('Error fetching assets:', error);
+                res.status(500).send('Internal Server Error');
+            }
         });
+
+        app.get('/assets/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await assetCollection.findOne(query);
+            res.send(result);
+        })
+
+        app.patch('/assets/:id', async (req, res) => {
+            const item = req.body;
+            const id = req.params.id;
+            const options = { upsert: true };
+            const filter = { _id: new ObjectId(id) }
+            const operation = req.query.operation;
+            const updatedDoc = {
+                $set: {
+                    productNAme: item.productNAme,
+                    productType: item.productType,
+
+
+                },
+                
+
+            }
+            if (operation) {
+                let quantityUpdate;
+
+                if (operation === 'increment') {
+                    quantityUpdate = 1;
+                } else if (operation === 'decrement') {
+                    quantityUpdate = -1;
+                } else {
+                    return res.status(400).json({ message: 'Invalid operation. Use "increment" or "decrement".' });
+                }
+                updatedDoc.$inc = {
+                    quantity: quantityUpdate,
+                };
+
+            }
+            
+            if (item.quantity!==undefined) {
+                updatedDoc.$set.quantity = item.quantity;
+              }
+
+            const result = await assetCollection.updateOne(filter, updatedDoc, options)
+            res.send(result);
+        })
+
+
+        app.delete('/assets/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await assetCollection.deleteOne(query);
+            res.send(result);
+        })
+
+
+
+
+
 
         //   request related api
         app.get('/requests', async (req, res) => {
-            const result = await requestCollection.find().toArray();
-            res.send(result);
+            try {
+                const filter = req.query;
+                const emailOfRequester = req.query.emailOfRequester
+
+                const companyName = req.query.companyName
+                const status = req.query.status
+                const requestType = req.query.requestType
+                const assetType = req.query.assetType
+                const assetId = req.query.assetId
+                const query = {}
+
+                if (req.query.search) {
+                    query.nameOfRequester = { "$regex": filter.search, "$options": "i" }
+
+                }
+                if (emailOfRequester) {
+                    query.emailOfRequester = emailOfRequester
+                }
+
+
+                if (companyName) {
+                    query.companyName = companyName
+                }
+                if (status) {
+                    query.status = status
+                }
+                if (requestType) {
+                    query.requestType = requestType
+                }
+                if (assetType) {
+                    query.assetType = assetType
+                }
+                if (assetId) {
+                    query.assetId = assetId
+                }
+
+                const cursor = requestCollection.find(query);
+                const result = await cursor.toArray();
+                res.send(result);
+            } catch (error) {
+                console.error('Error fetching assets:', error);
+                res.status(500).send('Internal Server Error');
+            }
         });
+
 
         app.get('/requests/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
+
             const result = await requestCollection.findOne(query);
             res.send(result);
         })
+
+
+
+
 
 
         app.post('/requests', async (req, res) => {
             const item = req.body;
             const result = await requestCollection.insertOne(item);
             res.send(result);
+            console.log(result)
         });
+        app.patch('/requests/:id', async (req, res) => {
+            const item = req.body;
+            const id = req.params.id;
+            const options = { upsert: true };
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: item.status,
+                    actionDate: item.actionDate,
+                    quantity: item.quantity
+
+
+                }
+            }
+
+
+            const result = await requestCollection.updateOne(filter, updatedDoc, options)
+            res.send(result);
+        })
+
+
+        app.patch('/requests/:id', async (req, res) => {
+            const item = req.body;
+            const id = req.params.id;
+            const options = { upsert: true };
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: item.status,
+                    actionDate: item.actionDate,
+                    quantity: item.quantity
+
+
+                }
+            }
+
+
+            const result = await requestCollection.updateOne(filter, updatedDoc, options)
+            res.send(result);
+        })
+
+        app.delete('/requests/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await requestCollection.deleteOne(query);
+            res.send(result);
+        })
+
+
+        // payment
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+            console.log(amount, 'amount inside the intent')
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret
+            })
+        });
+
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const paymentResult = await paymentCollection.insertOne(payment);
+
+
+            console.log('payment info', payment);
+
+
+
+
+
+
+            res.send(paymentResult);
+        })
+
+        app.get('/payments', async (req, res) => {
+            const companyName = req.query.companyName
+
+            const query = {}
+            if (companyName) {
+                query.companyName = companyName
+            }
+
+            const cursor = paymentCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
+        })
 
 
 
